@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"reflect"
 	"strings"
 	"text/template"
@@ -83,6 +84,15 @@ func (cli *DockerCli) getMethod(args ...string) (func(...string) error, bool) {
 	return method.Interface().(func(...string) error), true
 }
 
+func (cli *DockerCli) getExternalCommand(name string) (func(...string) error, bool) {
+	_, err := exec.LookPath("docker-" + name)
+	if err == nil {
+		method := reflect.ValueOf(cli).MethodByName("CmdExternalCommand")
+		return method.Interface().(func(...string) error), true
+	}
+	return nil, false
+}
+
 // Cmd executes the specified command.
 func (cli *DockerCli) Cmd(args ...string) error {
 	if len(args) > 1 {
@@ -94,6 +104,10 @@ func (cli *DockerCli) Cmd(args ...string) error {
 	if len(args) > 0 {
 		method, exists := cli.getMethod(args[0])
 		if !exists {
+			method, exists := cli.getExternalCommand(args[0])
+			if exists {
+				return method(args...)
+			}
 			return fmt.Errorf("docker: '%s' is not a docker command.\nSee 'docker --help'.", args[0])
 		}
 		return method(args[1:]...)
